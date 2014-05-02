@@ -12,4 +12,9 @@ Most of the code here is just the example code from the various bindings provide
 
 zmq
 ====
+Tried v 4.0.4 -- works will and easy to start using -- however more of a message infrastructure than message queue.
 
+
+Other 
+=====
+Invasigateing later http://queues.io/
