@@ -29,7 +29,7 @@ socket.bind(port, function(err) {
 
 	var msg={seq:seq[symbol]++, sym:symbol, val:value}
 
-	socket.send(symbol +  JSON.stringify(msg));
+	socket.send([symbol, JSON.stringify(msg)]);
 	setImmediate(s);	
     }
     s();
