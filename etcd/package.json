@@ -1,0 +1,17 @@
+{
+  "name": "etcd-test",
+  "version": "0.0.1",
+  "dependencies": {
+      "node-etcd" : ">=0.0.1"
+  },
+  "engines": {
+    "node": "0.10.x"
+  },
+  "devDependencies": {
+  },
+  "scripts": {
+    "start": "",
+    "test": "make test",
+    "postinstall": "echo hi there from postinstall"
+  }
+}
