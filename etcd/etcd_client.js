@@ -1,8 +1,10 @@
 #!/usr/local/bin/node
 
+var qs=require('querystring');
+var url=require('url')
 var Etcd = require('node-etcd');
 var machines = {
-    init: { host:'127.0.0.1', 
+    init: { host:'54.188.212.79',
 	    port: ((process.argv.length > 3)?process.argv[3]:'4001'), 
 	    tryit: true }
 };
@@ -14,9 +16,10 @@ function getconfig() {
 	try {		    		    
 	    var n = nodes.node.nodes;
 	    for (var node in n) {
+		var u = url.parse(qs.parse(n[node].value).etcd);
 		machines[n[node].key] = {
-		    host: '127.0.0.1', 
-		    port: n[node].value.slice(30,34),
+		    host: u.hostname, 
+		    port: u.port || '4001',
 		    tryit: true};
 	    }
 	} catch(e) {
@@ -34,16 +37,6 @@ var etcd = null;
 // we would need to be more clever to even spread the load between the hosts.
 function reconnect()
 {
-    for (var i in machines) {
-	if (machines[i].tryit) {
-	    machines[i].tryit = false;	    
-	    etcd = new Etcd(machines[i].host, machines[i].port);
-	    if (etcd) {
-		console.log("CONNECTED", machines[i]);
-		return;
-	    }
-	}
-    }    
     while (true)
 	// if we have tried all, then randomly pick any and keep trying
 	// (maybe this should be the default....)
@@ -58,6 +51,7 @@ function reconnect()
 	}
 }
 reconnect(); // establish initial connection
+machines = {};
 
 var i = 0;
 var output = 0;
@@ -76,8 +70,9 @@ case 'setter':
 		 function(err,e) {
 		     setTimeout(iter_set,1000); 
 		     if (err) return reconnect();
-		     var now = new Date();	
-		     console.log(err, e.prevNode.value, e.node.value, now-settime);
+		     var now = new Date();
+		     if (e)
+			 console.log(err, e.prevNode?e.prevNode.value:null, e.node?e.node.value:null, now-settime);
 		     settime = now;
 		 });
     }
@@ -96,7 +91,7 @@ case 'busysetter':
 		     if (err) return reconnect();
 		     var now = new Date();
 		     if ( (output++%1000)==5)	
-			 console.log(err, e.prevNode.value, e.node.value, now-settime);
+			 console.log(err, e.prevNode?e.prevNode.value:null, e.node.value, now-settime);
 		     settime = now;
 		 });
     }
@@ -135,21 +130,22 @@ case 'monitor':
 		if (err) console.log("leader",err, leader);
 		if (err) return reconnect();
 		var now = new Date();
-		n = nodes.node.nodes;
+		n = nodes&&nodes.node?nodes.node.nodes:[];
 		var info = [];
 		try {		    		    
 		    for (var node in n) {
+			var u = url.parse(qs.parse(n[node].value).etcd);
 			machines[n[node].key] = {
-			    host: '127.0.0.1', 
-			    port: n[node].value.slice(30,34),
+			    host: u.hostname, 
+			    port: u.port || '4001',
 			    tryit: true};
-			info.push((":"+n[node].value.slice(30,34)));
+			info.push([u.hostname,u.port].join(':'));
 		    }
 		    info.push(leader);
 		} catch(e) {
-		    console.log(new Date(), e.toString());
+		    console.log((new Date()), e.toString());
 		}
-		console.log(now,info);
+		console.log(info.join(' / '));
 	    });	    
 	});
     }
@@ -164,7 +160,7 @@ case 'watcher':
     i = parseInt(Math.random() * 100);
     var commitindex = 0;
     etcd.get("cnt/"+i, function(err,e) {
-	commitindex = e.node.modifiedIndex;
+	commitindex = e.node?parseInt(e.node.modifiedIndex):0;
 	iter_watch();
     });
     function iter_watch(){	
@@ -172,8 +168,8 @@ case 'watcher':
 	etcd.watchIndex("cnt/"+i, commitindex+1, function(err,e) {
 	    // Simulate a `slow` watcher, to see that we get updates
 	    // even if the wather is not ready yet
-	    //setTimeout(iter_watch, Math.random()* 10000);
-	    setImmediate(iter_watch);
+	    setTimeout(iter_watch, Math.random()* 10000);
+	    //setImmediate(iter_watch);
 	    console.log(e);
 	    
 	    if (err) console.log("watcher",err, e);
@@ -188,7 +184,7 @@ case 'watcher':
 		if ( (now-age) > 110000) 
 		    console.log(i, now, now - age, e);
 
-		commitindex = e.node.modifiedIndex;
+		commitindex = e.node?parseInt(e.node.modifiedIndex):0;
 	    } catch(e) {}
 	});
     }
