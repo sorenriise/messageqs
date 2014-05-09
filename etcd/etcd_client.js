@@ -90,7 +90,7 @@ case 'busysetter':
 		     setImmediate(iter_busyset); 
 		     if (err) return reconnect();
 		     var now = new Date();
-		     if ( (output++%1000)==5)	
+		     if ( (output++%10)==5)	
 			 console.log(err, e.prevNode?e.prevNode.value:null, e.node.value, now-settime);
 		     settime = now;
 		 });
