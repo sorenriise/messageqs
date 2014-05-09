@@ -4,7 +4,7 @@ var qs=require('querystring');
 var url=require('url')
 var Etcd = require('node-etcd');
 var machines = {
-    init: { host:'54.188.212.79',
+    init: { host: '54.212.30.182',
 	    port: ((process.argv.length > 3)?process.argv[3]:'4001'), 
 	    tryit: true }
 };
@@ -81,6 +81,7 @@ case 'setter':
 
 case 'busysetter':
     getconfig();
+    var timing = { c: 0, s: new Date()}
     function iter_busyset()
     {
 	i = (i+1) % 100;    
@@ -89,13 +90,38 @@ case 'busysetter':
 		 function(err,e) {
 		     setImmediate(iter_busyset); 
 		     if (err) return reconnect();
+		     timing.c += 1;
 		     var now = new Date();
-		     if ( (output++%10)==5)	
-			 console.log(err, e.prevNode?e.prevNode.value:null, e.node.value, now-settime);
-		     settime = now;
+		     if ( (output++%25)==5) {
+			 console.log("op/s", timing.c*1000.0/(now-timing.s), " from ", timing.c,now-timing.s);
+			 timing = {c:0, s: now};
+		     }
 		 });
     }
     etcd.mkdir("cnt", iter_busyset );
+    break;
+
+case 'spawnsetter':
+    getconfig();
+    var timing = { c: 0, s: new Date()}
+    function iter_spawnset()
+    {
+	i = (i+1) % 100;    
+	etcd.set("cnt/"+i, 
+		 (new Date()).toString(),
+		 function(err,e) {
+		     setImmediate(iter_spawnset); 
+		     if (err) return reconnect();
+		     timing.c += 1;
+		     var now = new Date();
+		     if ( (output++%400)==35) {
+			 console.log("op/s", timing.c*1000.0/(now-timing.s), " from ", timing.c,now-timing.s);
+			 timing = {c:0, s: now};
+		     }
+		 });
+    }
+    for (var j=0; j<20; j++)
+	setTimeout(iter_spawnset,j*100);
     break;
 
 case 'getter':
@@ -107,7 +133,7 @@ case 'getter':
 	    if (err) return reconnect(); 
 	    try {
 		var now = new Date(), age = new Date(e.node.value);
-		if ( (output++%10000)==5)
+		if ( (output++%100)==5)
 		    console.log(i, now, now - age);
 		// Max time to cycle through for the setter
 		// should be 100 sec, lets make some noise if the data looks stale
@@ -166,9 +192,15 @@ case 'watcher':
     function iter_watch(){	
 	console.log("Wathing", commitindex+1);
 	etcd.watchIndex("cnt/"+i, commitindex+1, function(err,e) {
+	    if (err && err.errorCode == 401) {
+		return etcd.get("cnt/"+i, function(err,e) {
+		    commitindex = e.node?parseInt(e.node.modifiedIndex):0;
+		    iter_watch();
+		});
+	    }
 	    // Simulate a `slow` watcher, to see that we get updates
 	    // even if the wather is not ready yet
-	    setTimeout(iter_watch, Math.random()* 10000);
+	    setTimeout(iter_watch, Math.random()* 100);
 	    //setImmediate(iter_watch);
 	    console.log(e);
 	    
@@ -190,6 +222,53 @@ case 'watcher':
     }
     break;
 
+
+case 'spawnwatcher':
+
+    getconfig();
+    // Pick a key to watch
+    function spawn_watch() {
+	var i = parseInt(Math.random() * 100);
+	var commitindex = 0;
+	etcd.get("cnt/"+i, function(err,e) {
+	    commitindex = e.node?parseInt(e.node.modifiedIndex):0;
+	    iter_swatch();
+	});
+	function iter_swatch(){	
+	    //console.log("Wathing", commitindex+1);
+	    etcd.watchIndex("cnt/"+i, commitindex+1, function(err,e) {
+		if (err && err.errorCode == 401) {
+		    return etcd.get("cnt/"+i, function(err,e) {
+			commitindex = e.node?parseInt(e.node.modifiedIndex):0;
+			iter_swatch();
+		    });
+		}
+		// Simulate a `slow` watcher, to see that we get updates
+		// even if the wather is not ready yet
+		setTimeout(iter_swatch, Math.random()* 100);
+		//setImmediate(iter_watch);
+		
+		if (err) console.log("watcher",err, e);
+		if (err) return reconnect(); 
+		try {
+		    var now = new Date(), age = new Date(e.node.value);
+		    if ( (output++%1000)==5)
+			console.log(i, now, now - age);
+		    // Max time to cycle through for the setter
+		    // should be 100 sec, lets make some noise if the data looks stale
+		    // i.e older than 100 sec.
+		    if ( (now-age) > 110000) 
+			console.log(i, now, now - age, e);
+		    
+		    commitindex = e.node?parseInt(e.node.modifiedIndex):0;
+		} catch(e) {}
+	    });
+	}
+    }
+    for (var j=0; j < 200; j++)
+	setTimeout(spawn_watch, j*100);
+    break;
+	
     
 default:
     console.log(process.argv);
